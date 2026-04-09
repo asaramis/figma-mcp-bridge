@@ -1,0 +1,320 @@
+openapi: 3.0.0
+info:
+  title: Figma MCP Bridge API
+  description: REST API bridge for Figma's MCP server, enabling Writer Agent to inject images into Figma templates
+  version: 1.0.0
+  contact:
+    name: API Support
+    url: https://github.com/yourusername/figma-mcp-bridge
+
+servers:
+  - url: https://your-app-name.onrender.com
+    description: Production server (update after deployment)
+  - url: http://localhost:3000
+    description: Local development server
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key obtained from OAuth flow at /auth/figma
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: string
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        service:
+          type: string
+        version:
+          type: string
+
+    UpdateImageRequest:
+      type: object
+      required:
+        - fileKey
+        - nodeId
+      properties:
+        fileKey:
+          type: string
+          description: Figma file key from URL
+          example: "abc123xyz"
+        nodeId:
+          type: string
+          description: Node ID of the layer to update
+          example: "1:2"
+        imageUrl:
+          type: string
+          description: Public URL of image to inject (required if imageBase64 not provided)
+          example: "https://example.com/image.jpg"
+        imageBase64:
+          type: string
+          description: Base64-encoded image data (required if imageUrl not provided)
+        scaleMode:
+          type: string
+          enum: [FILL, FIT, CROP, TILE]
+          default: FILL
+          description: How to scale the image in the node
+
+    UpdateImageResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        result:
+          type: object
+
+    ExportRequest:
+      type: object
+      required:
+        - fileKey
+        - nodeId
+      properties:
+        fileKey:
+          type: string
+          description: Figma file key
+          example: "abc123xyz"
+        nodeId:
+          type: string
+          description: Node ID to export
+          example: "1:2"
+        format:
+          type: string
+          enum: [PNG, JPG, SVG, PDF]
+          default: PNG
+        scale:
+          type: number
+          default: 2
+          description: Export scale (1x, 2x, etc.)
+
+    ExportResponse:
+      type: object
+      properties:
+        images:
+          type: object
+          additionalProperties:
+            type: string
+            description: URL to exported image
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Check if the API is running
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/figma/file/{fileKey}:
+    get:
+      summary: Get Figma file info
+      description: Retrieve information about a Figma file
+      parameters:
+        - name: fileKey
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Figma file key from URL
+      responses:
+        '200':
+          description: File information retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to get file info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/figma/file/{fileKey}/node/{nodeId}:
+    get:
+      summary: Get node/frame info
+      description: Retrieve information about a specific node in a Figma file
+      parameters:
+        - name: fileKey
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Figma file key
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Node ID (e.g., "1:2")
+      responses:
+        '200':
+          description: Node information retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to get node info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/figma/update-image:
+    post:
+      summary: Update image in Figma node
+      description: |
+        **THE KEY ENDPOINT** - Inject an image into a Figma layer/node.
+        
+        This endpoint uses Figma's MCP server to write directly to the canvas,
+        updating the image fill of a specified node.
+        
+        Use this after generating images in Writer Agent to inject them into Figma templates.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateImageRequest'
+            examples:
+              withUrl:
+                summary: Update with image URL
+                value:
+                  fileKey: "abc123xyz"
+                  nodeId: "1:2"
+                  imageUrl: "https://example.com/generated-image.jpg"
+                  scaleMode: "FILL"
+              withBase64:
+                summary: Update with base64 data
+                value:
+                  fileKey: "abc123xyz"
+                  nodeId: "1:2"
+                  imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAUA..."
+                  scaleMode: "FIT"
+      responses:
+        '200':
+          description: Image updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateImageResponse'
+        '400':
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to update image
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/figma/export:
+    post:
+      summary: Export frame/node as image
+      description: Export a Figma frame or node as PNG, JPG, SVG, or PDF
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+            example:
+              fileKey: "abc123xyz"
+              nodeId: "1:2"
+              format: "PNG"
+              scale: 2
+      responses:
+        '200':
+          description: Node exported successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportResponse'
+        '400':
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to export node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/figma/tools:
+    get:
+      summary: List available MCP tools
+      description: Get a list of all available tools from the Figma MCP server
+      responses:
+        '200':
+          description: Tools list retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tools:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          description: Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to list tools
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

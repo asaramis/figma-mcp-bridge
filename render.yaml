@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: figma-mcp-bridge
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FIGMA_CLIENT_ID
+        sync: false
+      - key: FIGMA_CLIENT_SECRET
+        sync: false
+      - key: BASE_URL
+        sync: false
+      - key: PORT
+        value: 10000
