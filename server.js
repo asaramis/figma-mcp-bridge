@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
@@ -12,6 +13,7 @@ app.use(express.json({ limit: '50mb' }));
 
 // In-memory token storage (use Redis/DB in production)
 const tokenStore = new Map();
+const stateStore = new Map(); // Store OAuth states for CSRF protection
 
 // ============================================================
 // FIGMA OAUTH ROUTES
@@ -19,7 +21,11 @@ const tokenStore = new Map();
 
 // Start OAuth flow
 app.get('/auth/figma', (req, res) => {
-  const state = Math.random().toString(36).substring(7);
+  const state = crypto.randomBytes(16).toString('hex');
+  
+  // Store state for validation (expires in 10 minutes)
+  stateStore.set(state, Date.now() + 600000);
+  
   const redirectUri = `${process.env.BASE_URL}/auth/figma/callback`;
   
   const authUrl = `https://www.figma.com/oauth` +
@@ -40,10 +46,23 @@ app.get('/auth/figma/callback', async (req, res) => {
     return res.status(400).send('Authorization code missing');
   }
 
+  // Validate state (CSRF protection)
+  if (!state || !stateStore.has(state)) {
+    return res.status(400).send('Invalid or expired state parameter');
+  }
+  
+  const stateExpiry = stateStore.get(state);
+  if (Date.now() > stateExpiry) {
+    stateStore.delete(state);
+    return res.status(400).send('State parameter expired');
+  }
+  
+  stateStore.delete(state); // Use once
+
   try {
     const redirectUri = `${process.env.BASE_URL}/auth/figma/callback`;
     
-    // Exchange code for access token
+    // Exchange code for access token - CORRECTED ENDPOINT
     const params = new URLSearchParams({
       client_id: process.env.FIGMA_CLIENT_ID,
       client_secret: process.env.FIGMA_CLIENT_SECRET,
@@ -53,7 +72,7 @@ app.get('/auth/figma/callback', async (req, res) => {
     });
 
     const response = await axios.post(
-      'https://www.figma.com/api/oauth/token',
+      'https://api.figma.com/v1/oauth/token',
       params.toString(),
       {
         headers: {
@@ -65,7 +84,7 @@ app.get('/auth/figma/callback', async (req, res) => {
     const { access_token, refresh_token, expires_in } = response.data;
     
     // Generate API key for Writer to use
-    const apiKey = 'figma_' + Math.random().toString(36).substring(2, 15);
+    const apiKey = 'figma_' + crypto.randomBytes(8).toString('hex');
     
     // Store tokens
     tokenStore.set(apiKey, {
@@ -88,9 +107,8 @@ app.get('/auth/figma/callback', async (req, res) => {
       </html>
     `);
   } catch (error) {
-
-    console.error('OAuth error:', JSON.stringify(error.response?.data || error.message, null, 2));
-console.error('Full error:', error);
+    console.error('OAuth error:', error.response?.status, error.response?.statusText);
+    console.error('Error data:', JSON.stringify(error.response?.data, null, 2));
     res.status(500).send('Authentication failed');
   }
 });
@@ -109,12 +127,23 @@ async function getAccessToken(apiKey) {
 
   // Check if token needs refresh
   if (Date.now() >= tokens.expiresAt - 60000) {
-    // Refresh token
-    const response = await axios.post('https://www.figma.com/api/oauth/refresh', {
+    // Refresh token - CORRECTED ENDPOINT AND FORMAT
+    const params = new URLSearchParams({
       client_id: process.env.FIGMA_CLIENT_ID,
       client_secret: process.env.FIGMA_CLIENT_SECRET,
-      refresh_token: tokens.refreshToken
+      refresh_token: tokens.refreshToken,
+      grant_type: 'refresh_token'
     });
+
+    const response = await axios.post(
+      'https://api.figma.com/v1/oauth/token',
+      params.toString(),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
 
     tokens.accessToken = response.data.access_token;
     tokens.expiresAt = Date.now() + (response.data.expires_in * 1000);
