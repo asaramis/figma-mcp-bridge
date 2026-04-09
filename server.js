@@ -43,16 +43,24 @@ app.get('/auth/figma/callback', async (req, res) => {
   try {
     const redirectUri = `${process.env.BASE_URL}/auth/figma/callback`;
     
-    // Exchange code for access token
-    const response = await axios.post('https://www.figma.com/api/oauth/token', {
-      client_id: process.env.FIGMA_CLIENT_ID,
-      client_secret: process.env.FIGMA_CLIENT_SECRET,
-      redirect_uri: redirectUri,
-      code: code,
-      grant_type: 'authorization_code'
-    });
+// Exchange code for access token
+const params = new URLSearchParams({
+  client_id: process.env.FIGMA_CLIENT_ID,
+  client_secret: process.env.FIGMA_CLIENT_SECRET,
+  redirect_uri: redirectUri,
+  code: code,
+  grant_type: 'authorization_code'
+});
 
-    const { access_token, refresh_token, expires_in } = response.data;
+const response = await axios.post(
+  'https://www.figma.com/api/oauth/token',
+  params.toString(),
+  {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    }
+  }
+);
     
     // Generate API key for Writer to use
     const apiKey = 'figma_' + Math.random().toString(36).substring(2, 15);
