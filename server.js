@@ -53,7 +53,7 @@ app.get('/auth/figma/callback', async (req, res) => {
     });
 
     const response = await axios.post(
-      'https://www.figma.com/api/oauth/token',
+      'https://www.figma.com/oauth/token',
       params.toString(),
       {
         headers: {
