@@ -25,7 +25,6 @@ app.get('/auth/figma', (req, res) => {
   const authUrl = `https://www.figma.com/oauth` +
     `?client_id=${process.env.FIGMA_CLIENT_ID}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=file_read,file_write` +
     `&state=${state}` +
     `&response_type=code`;
   
