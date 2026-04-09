@@ -88,7 +88,9 @@ app.get('/auth/figma/callback', async (req, res) => {
       </html>
     `);
   } catch (error) {
-    console.error('OAuth error:', error.response?.data || error.message);
+
+    console.error('OAuth error:', JSON.stringify(error.response?.data || error.message, null, 2));
+console.error('Full error:', error);
     res.status(500).send('Authentication failed');
   }
 });
