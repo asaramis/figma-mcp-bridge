@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
@@ -21,6 +20,7 @@ const stateStore = new Map(); // Store OAuth states for CSRF protection
 
 // Start OAuth flow
 app.get('/auth/figma', (req, res) => {
+  const crypto = require('crypto');
   const state = crypto.randomBytes(16).toString('hex');
   
   // Store state for validation (expires in 10 minutes)
@@ -46,24 +46,11 @@ app.get('/auth/figma/callback', async (req, res) => {
     return res.status(400).send('Authorization code missing');
   }
 
-  // Validate state (CSRF protection)
-  if (!state || !stateStore.has(state)) {
-    return res.status(400).send('Invalid or expired state parameter');
-  }
-  
-  const stateExpiry = stateStore.get(state);
-  if (Date.now() > stateExpiry) {
-    stateStore.delete(state);
-    return res.status(400).send('State parameter expired');
-  }
-  
-  stateStore.delete(state); // Use once
-
   try {
     const redirectUri = `${process.env.BASE_URL}/auth/figma/callback`;
     
-    // Exchange code for access token - CORRECTED ENDPOINT
-    const params = new URLSearchParams({
+    // Exchange code for access token
+    const response = await axios.post('https://www.figma.com/api/oauth/token', {
       client_id: process.env.FIGMA_CLIENT_ID,
       client_secret: process.env.FIGMA_CLIENT_SECRET,
       redirect_uri: redirectUri,
@@ -71,20 +58,10 @@ app.get('/auth/figma/callback', async (req, res) => {
       grant_type: 'authorization_code'
     });
 
-    const response = await axios.post(
-      'https://api.figma.com/v1/oauth/token',
-      params.toString(),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      }
-    );
-
     const { access_token, refresh_token, expires_in } = response.data;
     
     // Generate API key for Writer to use
-    const apiKey = 'figma_' + crypto.randomBytes(8).toString('hex');
+    const apiKey = 'figma_' + Math.random().toString(36).substring(2, 15);
     
     // Store tokens
     tokenStore.set(apiKey, {
@@ -107,8 +84,7 @@ app.get('/auth/figma/callback', async (req, res) => {
       </html>
     `);
   } catch (error) {
-    console.error('OAuth error:', error.response?.status, error.response?.statusText);
-    console.error('Error data:', JSON.stringify(error.response?.data, null, 2));
+    console.error('OAuth error:', error.response?.data || error.message);
     res.status(500).send('Authentication failed');
   }
 });
@@ -127,23 +103,12 @@ async function getAccessToken(apiKey) {
 
   // Check if token needs refresh
   if (Date.now() >= tokens.expiresAt - 60000) {
-    // Refresh token - CORRECTED ENDPOINT AND FORMAT
-    const params = new URLSearchParams({
+    // Refresh token
+    const response = await axios.post('https://www.figma.com/api/oauth/refresh', {
       client_id: process.env.FIGMA_CLIENT_ID,
       client_secret: process.env.FIGMA_CLIENT_SECRET,
-      refresh_token: tokens.refreshToken,
-      grant_type: 'refresh_token'
+      refresh_token: tokens.refreshToken
     });
-
-    const response = await axios.post(
-      'https://api.figma.com/v1/oauth/token',
-      params.toString(),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      }
-    );
 
     tokens.accessToken = response.data.access_token;
     tokens.expiresAt = Date.now() + (response.data.expires_in * 1000);
@@ -238,6 +203,38 @@ app.get('/api/figma/file/:fileKey/node/:nodeId', requireAuth, async (req, res) =
     console.error('Error getting node:', error.response?.data || error.message);
     res.status(500).json({ 
       error: 'Failed to get node info',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+// Update text content in a node
+app.post('/api/figma/update-text', requireAuth, async (req, res) => {
+  try {
+    const accessToken = await getAccessToken(req.apiKey);
+    const { fileKey, nodeId, text } = req.body;
+
+    if (!fileKey || !nodeId || text === undefined) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: fileKey, nodeId, text' 
+      });
+    }
+
+    // Call MCP tool to update text
+    const result = await callFigmaMCP(accessToken, 'update_node_text', {
+      file_key: fileKey,
+      node_id: nodeId,
+      text: text
+    });
+
+    res.json({ 
+      success: true,
+      result 
+    });
+  } catch (error) {
+    console.error('Error updating text:', error.response?.data || error.message);
+    res.status(500).json({ 
+      error: 'Failed to update text',
       details: error.response?.data || error.message 
     });
   }
