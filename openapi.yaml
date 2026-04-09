@@ -8,10 +8,8 @@ info:
     url: https://github.com/yourusername/figma-mcp-bridge
 
 servers:
-  - url: https://your-app-name.onrender.com
-    description: Production server (update after deployment)
-  - url: http://localhost:3000
-    description: Local development server
+  - url: https://figma-mcp-bridge.onrender.com
+    description: Production server
 
 security:
   - ApiKeyAuth: []
@@ -187,6 +185,71 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           description: Failed to get node info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/figma/update-text:
+    post:
+      summary: Update text in Figma node
+      description: |
+        Update the text content of a text layer in Figma.
+        
+        Use this to update usernames, captions, titles, or any text content in your Figma templates.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fileKey
+                - nodeId
+                - text
+              properties:
+                fileKey:
+                  type: string
+                  description: Figma file key from URL
+                  example: "abc123xyz"
+                nodeId:
+                  type: string
+                  description: Node ID of the text layer to update
+                  example: "1:10"
+                text:
+                  type: string
+                  description: New text content
+                  example: "@johndoe"
+            example:
+              fileKey: "abc123xyz"
+              nodeId: "1:10"
+              text: "@johndoe"
+      responses:
+        '200':
+          description: Text updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  result:
+                    type: object
+        '400':
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to update text
           content:
             application/json:
               schema:
