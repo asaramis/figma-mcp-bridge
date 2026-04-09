@@ -32,7 +32,6 @@ app.get('/auth/figma', (req, res) => {
   res.redirect(authUrl);
 });
 
-
 // OAuth callback
 app.get('/auth/figma/callback', async (req, res) => {
   const { code, state } = req.query;
