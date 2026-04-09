@@ -22,11 +22,14 @@ app.get('/auth/figma', (req, res) => {
   const state = Math.random().toString(36).substring(7);
   const redirectUri = `${process.env.BASE_URL}/auth/figma/callback`;
   
-  const authUrl = `https://www.figma.com/oauth` +
+```
+const authUrl = `https://www.figma.com/oauth` +
     `?client_id=${process.env.FIGMA_CLIENT_ID}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&scope=file_content:read,file_dev_resources:write,file_metadata:read,current_user:read` +
     `&state=${state}` +
     `&response_type=code`;
+```
   
   res.redirect(authUrl);
 });
